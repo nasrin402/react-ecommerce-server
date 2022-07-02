@@ -11,7 +11,7 @@ router.post('/product',authCheck, adminCheck, create);
 router.get('/products/:count', listAll);
 router.get('/product/:slug', read);
 router.delete('/products/:slug', authCheck, adminCheck, remove);
-//router.put('/product/:slug', authCheck, adminCheck, update);
+router.put('/product/:slug', authCheck, adminCheck, update);
 
 
 module.exports = router;
