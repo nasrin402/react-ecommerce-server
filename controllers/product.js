@@ -1,6 +1,7 @@
 const Product = require("../models/product");
 const User = require("../models/user");
 const slugify = require("slugify");
+//const { aggregate } = require("../models/product");
 
 exports.create = async (req, res) => {
   try {
@@ -49,14 +50,13 @@ exports.read = async (req, res) => {
 
 exports.update = async (req, res) => {
   try {
-   
     // if(req.body.title){
     //   req.body.slug = slugify(req.body.title);
     // }
     const updated = await Product.findOneAndUpdate(
-      {slug:req.params.slug},
+      { slug: req.params.slug },
       req.body,
-      {new: true}
+      { new: true }
     );
     res.json(updated);
   } catch (err) {
@@ -86,76 +86,177 @@ exports.update = async (req, res) => {
 // }
 
 //WITH PAGINATION
-exports.list = async(req, res) =>{
-  try{
-const {sort, order, page} = req.body;
-const currentPage = page || 1;
-const perPage = 3; //3
+exports.list = async (req, res) => {
+  try {
+    const { sort, order, page } = req.body;
+    const currentPage = page || 1;
+    const perPage = 3; //3
 
-const products = await Product.find({})
-.skip((currentPage -1) * perPage)
-.populate("category")
-.populate("subs")
-.sort([[sort, order]])
-.limit(perPage)
-.exec();
-res.json(products)
-  }catch(err){
-console.log(err)
+    const products = await Product.find({})
+      .skip((currentPage - 1) * perPage)
+      .populate("category")
+      .populate("subs")
+      .sort([[sort, order]])
+      .limit(perPage)
+      .exec();
+    res.json(products);
+  } catch (err) {
+    console.log(err);
   }
-}
+};
 
-exports.productsCount = async(req, res) =>{
+exports.productsCount = async (req, res) => {
   const total = await Product.find({}).estimatedDocumentCount();
-  res.json(total); 
-}
+  res.json(total);
+};
 
-exports.productStar = async(req, res) =>{
+exports.productStar = async (req, res) => {
   const product = await Product.findById(req.params.productId).exec();
-  const user = await User.findOne({email: req.user.email}).exec();
-  const {star} = req.body;
+  const user = await User.findOne({ email: req.user.email }).exec();
+  const { star } = req.body;
 
   //who is updating
   //check if currently logged in user have already added rating to this product
-  let existingRatingObject = product.ratings.find((ele) =>ele.postedBy.toString() === user._id.toString());
+  let existingRatingObject = product.ratings.find(
+    (ele) => ele.postedBy.toString() === user._id.toString()
+  );
 
   //if user haven't left rating yet, push it
-  if(existingRatingObject === undefined){
-    let ratingAdded = await Product.findByIdAndUpdate(product._id, {
-      $push: {ratings: {star: star, postedBy: user._id}},
-    },
-    {new:true}).exec();
+  if (existingRatingObject === undefined) {
+    let ratingAdded = await Product.findByIdAndUpdate(
+      product._id,
+      {
+        $push: { ratings: { star: star, postedBy: user._id } },
+      },
+      { new: true }
+    ).exec();
     console.log("ratingAdded", ratingAdded);
-    res.json(ratingAdded)
-  }else {
+    res.json(ratingAdded);
+  } else {
     //if user have a;ready left rating, update it
     const ratingUpdated = await Product.updateOne(
       {
-      ratings:{
-        $elemMatch: existingRatingObject
-      }},
-      {
-        $set: {"ratings.$.star": star}
+        ratings: {
+          $elemMatch: existingRatingObject,
+        },
       },
-      {new: true}
+      {
+        $set: { "ratings.$.star": star },
+      },
+      { new: true }
     ).exec();
 
-    console.log("ratingUpdate", ratingUpdated)
+    console.log("ratingUpdate", ratingUpdated);
     res.json(ratingUpdated);
   }
 };
 
-exports.listRelated = async (req, res) =>{
+exports.listRelated = async (req, res) => {
   const product = await Product.findById(req.params.productId).exec();
 
   const related = await Product.find({
-    _id: {$ne: product._id},
+    _id: { $ne: product._id },
     category: product.category,
   })
-  .limit(3)
-  .populate("category")
-  .populate("subs")
-  .exec();
+    .limit(3)
+    .populate("category")
+    .populate("subs")
+    .exec();
 
-  res.json(related)
+  res.json(related);
+};
+
+// search / filter
+const handleQuery = async (req, res, query) => {
+  const products = await Product.find({ $text: { $search: query } })
+    .populate("category", "_id name")
+    .populate("subs", "_id name")
+    .exec();
+
+  res.json(products);
+};
+
+const handlePrice = async (req, res, price) => {
+  try {
+    const products = await Product.find({
+      price: {
+        $gte: price[0],
+        $lte: price[1],
+      },
+    })
+      .populate("category", "_id name")
+      .populate("subs", "_id name")
+      .exec();
+
+    res.json(products);
+  } catch (err) {
+    console.log(err);
+  }
+};
+const handleCategory = async (req, res, category) => {
+  try {
+    const products = await Product.find({ category: category })
+      .populate("category", "_id name")
+      .populate("subs", "_id name")
+      .exec();
+    res.json(products);
+  } catch (err) {
+    console.log(err);
+  }
+};
+
+const handleStars = (req, res, stars) => {
+  Product.aggregate([
+    {
+      $project: {
+        document: "$$ROOT",
+        floorAverage: {
+          $floor: { $avg: "$ratings.star" },
+        },
+      },
+    },
+    { $match: { floorAverage: stars } },
+  ])
+    .limit(12)
+    .exec((err, aggregates) => {
+      if (err) console.log("AGGREGATE ERR", err);
+      Product.find({ _id: aggregates })
+        .populate("category", "_id name")
+        .populate("subs", "_id name")
+        .exec((err, products) => {
+          if (err) console.log("AGGREGATE PRODUCT ERR", err);
+          res.json(products);
+        });
+    });
+};
+const handleSub = async (req, res, sub) =>{
+  const products = await Product.find({subs: sub})
+  .populate("category", "_id name")
+  .populate("subs", "_id name")
+  .exec();
+  res.json(products);
 }
+exports.searchFilters = async (req, res) => {
+  const { query, price, category, stars, sub } = req.body;
+
+  if (query) {
+    console.log("Query", query);
+    await handleQuery(req, res, query);
+  }
+  if (price !== undefined) {
+    console.log("Price----->", price);
+    await handlePrice(req, res, price);
+  }
+  if (category) {
+    console.log("category----->", category);
+    handleCategory(req, res, category);
+  }
+  if (stars) {
+    console.log("stars----->", stars);
+    handleStars(req, res, stars);
+  }
+  if (sub) {
+    console.log("sub----->", sub);
+    handleSub(req, res, sub);
+  }
+};

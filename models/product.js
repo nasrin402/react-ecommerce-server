@@ -51,11 +51,16 @@ const productSchema = new mongoose.Schema({
   },
   color: {
     type: String,
-    enum: ["Black", "Brown", "Silver", "white", "Blue"],
+    enum: ["Black", "Brown", "Silver", "white", "Blue", "yellow"],
   },
   brand: {
+    // type: String,
+    // trim: true,
+    // required: true,
+    // maxlength: 50,
+    // text: true,
     type: String,
-    enum: ["Apple", "Samsung", "Microsoft", "Lenovo", "ASUS", "HP"],
+    enum: [ "Organic Nutrition Limited"],
   },
   ratings:[
       {
